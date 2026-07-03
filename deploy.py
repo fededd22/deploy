@@ -7,7 +7,7 @@ import time
 import shutil
 import platform
 
-# Configuration
+# Configuration avec SSL/TLS sur le port 443
 CONFIG = {
     "log": {
         "loglevel": "warning"
@@ -15,7 +15,7 @@ CONFIG = {
     "inbounds": [
         {
             "listen": "0.0.0.0",
-            "port": 8080,
+            "port": 443,  # Changé de 8080 à 443 pour SSL
             "protocol": "vless",
             "settings": {
                 "clients": [
@@ -30,6 +30,11 @@ CONFIG = {
                 "network": "ws",
                 "wsSettings": {
                     "path": "/by_moon"
+                },
+                "security": "tls",  # Activation TLS
+                "tlsSettings": {
+                    "allowInsecure": True,  # Pour les certificats auto-signés
+                    "serverName": "youtube.com"  # SNI correspondant
                 },
                 "sockopt": {
                     "tcpFastOpen": True,
@@ -57,7 +62,7 @@ DOCKERFILE = """FROM teddysun/v2ray:latest
 
 COPY config.json /etc/v2ray/config.json
 
-EXPOSE 8080
+EXPOSE 443
 
 CMD ["/usr/bin/v2ray", "run", "-config", "/etc/v2ray/config.json"]
 """
@@ -196,22 +201,22 @@ def build_image():
         return False
 
 def run_container():
-    """Exécute le conteneur Docker"""
-    print("\n🚀 Lancement du conteneur V2Ray...")
+    """Exécute le conteneur Docker sur le port 443"""
+    print("\n🚀 Lancement du conteneur V2Ray sur le port 443...")
     try:
         # Arrêter et supprimer l'ancien conteneur s'il existe
         subprocess.run(['docker', 'rm', '-f', 'v2ray-moon-container'], 
                       capture_output=True, check=False)
         
-        # Lancer le nouveau conteneur
+        # Lancer le nouveau conteneur sur le port 443
         subprocess.run([
             'docker', 'run', '-d',
             '--name', 'v2ray-moon-container',
-            '-p', '8080:8080',
+            '-p', '443:443',  # Changé de 8080 à 443
             '--restart', 'unless-stopped',
             'v2ray-moon'
         ], check=True)
-        print("✅ Conteneur V2Ray lancé avec succès sur le port 8080")
+        print("✅ Conteneur V2Ray lancé avec succès sur le port 443")
         return True
     except subprocess.CalledProcessError as e:
         print(f"❌ Erreur lors du lancement: {e}")
@@ -271,11 +276,34 @@ def get_server_ip():
     except:
         return "VOTRE_IP"
 
+def configure_firewall():
+    """Configure le firewall pour ouvrir le port 443"""
+    system = platform.system().lower()
+    
+    if system == "linux":
+        print("\n🔧 Configuration du firewall...")
+        
+        # Vérifier si ufw est installé
+        try:
+            subprocess.run(['which', 'ufw'], capture_output=True, check=True)
+            # Ouvrir le port 443 avec ufw
+            subprocess.run(['sudo', 'ufw', 'allow', '443/tcp'], check=False)
+            print("✅ Port 443 ouvert avec ufw")
+        except:
+            # Essayer avec iptables
+            try:
+                subprocess.run(['sudo', 'iptables', '-A', 'INPUT', '-p', 'tcp', '--dport', '443', '-j', 'ACCEPT'], check=False)
+                print("✅ Port 443 ouvert avec iptables")
+            except:
+                print("⚠️  Impossible de configurer le firewall automatiquement")
+                print("   Assurez-vous que le port 443 est ouvert manuellement")
+
 def main():
     print("=" * 50)
-    print("🚀 Déploiement automatique V2Ray VLESS")
+    print("🚀 Déploiement automatique V2Ray VLESS avec SSL/TLS")
     print("=" * 50)
     print("👤 Telegram: @moonalgerie")
+    print("🔒 Configuration: Port 443 avec TLS/SSL")
     print("")
     
     # Vérifier et installer Docker
@@ -290,6 +318,9 @@ def main():
     if not verify_docker():
         print("❌ Docker n'est pas opérationnel. Veuillez redémarrer votre session et réessayer.")
         sys.exit(1)
+    
+    # Configurer le firewall
+    configure_firewall()
     
     # Créer les fichiers
     if not create_files():
@@ -312,20 +343,32 @@ def main():
     
     print("\n" + "=" * 50)
     print("✅ Déploiement terminé avec succès!")
-    print("📌 Votre serveur VLESS est accessible sur:")
-    print(f"   ws://{server_ip}:8080/by_moon")
+    print("📌 Votre serveur VLESS avec SSL/TLS est accessible sur:")
+    print(f"   wss://{server_ip}:443/by_moon")
     print("🆔 Client ID: d2cb8181-233c-4d18-9972-8a1b04db0044")
+    print("🔒 SNI: youtube.com (utilisez ceci dans votre client)")
     print("📝 Configuration sauvegardée dans config.json")
     print("=" * 50)
+    
+    print("\n📱 Configuration pour DarkTunnel / V2Ray client:")
+    print("  - Adresse: " + server_ip)
+    print("  - Port: 443")
+    print("  - UUID: d2cb8181-233c-4d18-9972-8a1b04db0044")
+    print("  - Path: /by_moon")
+    print("  - SNI: youtube.com")
+    print("  - TLS: Activé")
+    print("  - Network: WebSocket")
     
     print("\n💡 Commandes utiles:")
     print("  - Voir les logs: docker logs v2ray-moon-container")
     print("  - Arrêter: docker stop v2ray-moon-container")
     print("  - Démarrer: docker start v2ray-moon-container")
     print("  - Supprimer: docker rm -f v2ray-moon-container")
+    print("  - Vérifier l'état: docker ps | grep v2ray-moon-container")
     
     print("\n⚠️  Si vous êtes sur Linux, vous pourriez avoir besoin de:")
     print("  sudo usermod -aG docker $USER && newgrp docker")
+    print("  sudo ufw allow 443/tcp (si ufw est actif)")
 
 if __name__ == "__main__":
     try:
